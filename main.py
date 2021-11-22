@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
+from sklearn.model_selection import GridSearchCV
+from keras.wrappers.scikit_learn import KerasClassifier
 from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from tensorflow.keras import layers
@@ -60,7 +61,7 @@ def split_data(x, y, train_perc):
     return x_train, x_test, y_train, y_test
 
 
-def build_nn(length, dropout_rate):
+def build_model(length=90, dropout_rate=0.2, optimizer='adam'):
     model = tf.keras.Sequential()
 
     model.add(layers.LSTM(units=32, return_sequences=True,
@@ -75,32 +76,37 @@ def build_nn(length, dropout_rate):
 
     model.summary()
 
+    model.compile(optimizer=optimizer, loss='mean_squared_error')
+
     return model
 
 
 def train_model(mod, x_train, y_train):
-    mod.compile(optimizer='adam', loss='mean_squared_error')
     history = mod.fit(x_train, y_train, epochs=30, batch_size=32)
 
-    loss = history.history['loss']
-    epoch_count = range(1, len(loss) + 1)
-    plt.figure(figsize=(12, 8))
-    plt.plot(epoch_count, loss, 'r--')
-    plt.legend(['Training Loss'])
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.show();
+    # loss = history.history['loss']
+    # epoch_count = range(1, len(loss) + 1)
+    # plt.figure(figsize=(12, 8))
+    # plt.plot(epoch_count, loss, 'r--')
+    # plt.legend(['Training Loss'])
+    # plt.xlabel('Epoch')
+    # plt.ylabel('Loss')
+    # plt.show();
 
+def evaluate_model(mod, x_test, y_test):
+    score = mod.evaluate(x_test, y_test, verbose=0)
+    return score
 
 def make_predictions(mod, x_test, y_test):
     pred = mod.predict(x_test)
 
-    plt.figure(figsize=(12, 8))
-    plt.plot(y_test, color='blue', label='Real')
-    plt.plot(pred, color='red', label='Prediction')
-    plt.title('BTC Price Prediction')
-    plt.legend()
-    plt.show()
+
+    # plt.figure(figsize=(12, 8))
+    # plt.plot(y_test, color='blue', label='Real')
+    # plt.plot(pred, color='red', label='Prediction')
+    # plt.title('BTC Price Prediction')
+    # plt.legend()
+    # plt.show()
 
     return pred
 
@@ -115,16 +121,27 @@ def denormalize_data(pred, y_test, sc):
     plt.legend()
     plt.show(0)
 
+
+
 if __name__ == "__main__":
     leng = 90
-    tr_perc = 0.9
-    dropout = 0.2
+    tr_perc = 0.8
+    # dropout_parameters = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+    dropout_parameters = [0.1, 0.2]
+    scores = []
 
     btc_history = import_data()
     btc_history, btc_target = preprocess_data(btc_history, leng)
     btc_hist_scaled, btc_target_scaled, scaler = normalize_data(btc_history, btc_target, leng)
     X_tr, X_te, y_tr, y_te = split_data(btc_hist_scaled, btc_target_scaled, tr_perc)
-    btc_model = build_nn(leng, dropout)
-    train_model(btc_model, X_tr, y_tr)
-    btc_pred = make_predictions(btc_model, X_te, y_te)
-    denormalize_data(btc_pred, y_te, scaler)
+
+    for dropout in dropout_parameters:
+        btc_model = build_model(leng, dropout, 'adam')
+        train_model(btc_model, X_tr, y_tr)
+        model_loss = evaluate_model(btc_model, X_te, y_te)
+        scores.append("Dropout: " + str(dropout) + " Loss: " + str(model_loss))
+
+    print(scores)
+
+
+    # denormalize_data(btc_pred, y_te, scaler)
