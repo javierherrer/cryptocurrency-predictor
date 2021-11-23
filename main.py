@@ -61,54 +61,58 @@ def split_data(x, y, train_perc):
     return x_train, x_test, y_train, y_test
 
 
-def build_model(length=90, dropout_rate=0.2, optimizer='adam'):
+def build_model(hidden_units, length, dropout_rate):
     model = tf.keras.Sequential()
 
-    model.add(layers.LSTM(units=32, return_sequences=True,
+    model.add(layers.LSTM(units=hidden_units, return_sequences=True,
                           input_shape=(length, 1), dropout=dropout_rate))
 
-    model.add(layers.LSTM(units=32, return_sequences=True,
+    model.add(layers.LSTM(units=hidden_units, return_sequences=True,
                           dropout=dropout_rate))
 
-    model.add(layers.LSTM(units=32, dropout=dropout_rate))
+    model.add(layers.LSTM(units=hidden_units, dropout=dropout_rate))
 
     model.add(layers.Dense(units=1))
 
     model.summary()
 
-    model.compile(optimizer=optimizer, loss='mean_squared_error')
+    model.compile(optimizer='adam', loss='mean_squared_error')
 
     return model
 
 
-def train_model(mod, x_train, y_train):
-    history = mod.fit(x_train, y_train, epochs=30, batch_size=32)
+def train_model(mod, x_train, y_train, epochs, graph=False):
+    history = mod.fit(x_train, y_train, epochs=epochs, batch_size=32)
 
-    # loss = history.history['loss']
-    # epoch_count = range(1, len(loss) + 1)
-    # plt.figure(figsize=(12, 8))
-    # plt.plot(epoch_count, loss, 'r--')
-    # plt.legend(['Training Loss'])
-    # plt.xlabel('Epoch')
-    # plt.ylabel('Loss')
-    # plt.show();
+    if graph:
+        loss = history.history['loss']
+        epoch_count = range(1, len(loss) + 1)
+        plt.figure(figsize=(12, 8))
+        plt.plot(epoch_count, loss, 'r--')
+        plt.legend(['Training Loss'])
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.show();
+
 
 def evaluate_model(mod, x_test, y_test):
     score = mod.evaluate(x_test, y_test, verbose=0)
     return score
 
-def make_predictions(mod, x_test, y_test):
+
+def make_predictions(mod, x_test, y_test, graph):
     pred = mod.predict(x_test)
 
-
-    # plt.figure(figsize=(12, 8))
-    # plt.plot(y_test, color='blue', label='Real')
-    # plt.plot(pred, color='red', label='Prediction')
-    # plt.title('BTC Price Prediction')
-    # plt.legend()
-    # plt.show()
+    if graph:
+        plt.figure(figsize=(12, 8))
+        plt.plot(y_test, color='blue', label='Real')
+        plt.plot(pred, color='red', label='Prediction')
+        plt.title('BTC Price Prediction')
+        plt.legend()
+        plt.show()
 
     return pred
+
 
 def denormalize_data(pred, y_test, sc):
     pred_transformed = sc.inverse_transform(pred)
@@ -122,26 +126,57 @@ def denormalize_data(pred, y_test, sc):
     plt.show(0)
 
 
+def recover_best_parameters(params):
+    return params['Model'], params['Scaler'], params['Parameters']
+
 
 if __name__ == "__main__":
-    leng = 90
     tr_perc = 0.8
-    # dropout_parameters = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
-    dropout_parameters = [0.1, 0.2]
-    scores = []
+    length_parameters = [80, 90, 100]
+    units_parameters = [32, 64, 128]
+    dropout_parameters = [0.0, 0.2, 0.3]
+    epochs_parameters = [20, 30, 40]
+    scores = {}
+    best_loss = float('inf')
+    best_model = {}
+    file =open("scores-log.txt", "w")
 
-    btc_history = import_data()
-    btc_history, btc_target = preprocess_data(btc_history, leng)
-    btc_hist_scaled, btc_target_scaled, scaler = normalize_data(btc_history, btc_target, leng)
-    X_tr, X_te, y_tr, y_te = split_data(btc_hist_scaled, btc_target_scaled, tr_perc)
+    btc_data = import_data()
 
-    for dropout in dropout_parameters:
-        btc_model = build_model(leng, dropout, 'adam')
-        train_model(btc_model, X_tr, y_tr)
-        model_loss = evaluate_model(btc_model, X_te, y_te)
-        scores.append("Dropout: " + str(dropout) + " Loss: " + str(model_loss))
+    for leng in length_parameters:
+        btc_history, btc_target = preprocess_data(btc_data, leng)
+        btc_hist_scaled, btc_target_scaled, scaler = normalize_data(btc_history, btc_target, leng)
+        X_tr, X_te, y_tr, y_te = split_data(btc_hist_scaled, btc_target_scaled, tr_perc)
 
-    print(scores)
+        for epochs in epochs_parameters:
+            for units in units_parameters:
+                for dropout in dropout_parameters:
+                    btc_model = build_model(units, leng, dropout)
+                    train_model(btc_model, X_tr, y_tr, epochs)
+                    model_loss = evaluate_model(btc_model, X_te, y_te)
+                    parameters = 'Length: ' + str(leng) + \
+                                 'Epochs: ' + str(epochs) + \
+                                 'Units' + str(units) + \
+                                 'Dropout: ' + str(dropout)
+                    scores[parameters] = model_loss
+                    file.write(str(model_loss))
+                    file.write(parameters)
+                    if model_loss < best_loss:
+                        best_loss = model_loss
+                        best_model = {
+                            'Model': btc_model,
+                            'Scaler': scaler,
+                            'Parameters': parameters
+                        }
 
+    sorted_scores = sorted(scores.items(), key=lambda kv: kv[1])
+    print(dict(sorted_scores))
 
-    # denormalize_data(btc_pred, y_te, scaler)
+    print('***** BEST MODEL *****')
+    btc_model, scaler, parameters = recover_best_parameters(best_model)
+    print(parameters)
+
+    btc_pred = make_predictions(btc_model, X_te, y_te, False)
+    denormalize_data(btc_pred, y_te, scaler)
+
+    file.close()
