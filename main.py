@@ -19,7 +19,7 @@ def import_data():
 
 
 # Use the data from the previous "length" days to predict the price at that time
-def preprocess_data(data, length):
+def group_data(data, length):
     data = data.dropna()
 
     data = data.iloc[:, 0]
@@ -127,7 +127,14 @@ def denormalize_data(pred, y_test, sc):
 
 
 def recover_best_parameters(params):
-    return params['Model'], params['Scaler'], params['Parameters']
+    return params['Length'], params['Epochs'], params['Units'], params['Dropout']
+
+
+def preprocess_data(length):
+    btc_history, btc_target = group_data(btc_data, length)
+    btc_hist_scaled, btc_target_scaled, sc = normalize_data(btc_history, btc_target, leng)
+    x_train, x_test, y_train, y_test = split_data(btc_hist_scaled, btc_target_scaled, tr_perc)
+    return x_train, x_test, y_train, y_test, sc
 
 
 if __name__ == "__main__":
@@ -139,14 +146,12 @@ if __name__ == "__main__":
     scores = {}
     best_loss = float('inf')
     best_model = {}
-    file =open("scores-log.txt", "w")
+    file = open("scores-log.txt", "w", buffering=1)
 
     btc_data = import_data()
 
     for leng in length_parameters:
-        btc_history, btc_target = preprocess_data(btc_data, leng)
-        btc_hist_scaled, btc_target_scaled, scaler = normalize_data(btc_history, btc_target, leng)
-        X_tr, X_te, y_tr, y_te = split_data(btc_hist_scaled, btc_target_scaled, tr_perc)
+        X_tr, X_te, y_tr, y_te, _ = preprocess_data(leng)
 
         for epochs in epochs_parameters:
             for units in units_parameters:
@@ -155,28 +160,35 @@ if __name__ == "__main__":
                     train_model(btc_model, X_tr, y_tr, epochs)
                     model_loss = evaluate_model(btc_model, X_te, y_te)
                     parameters = 'Length: ' + str(leng) + \
-                                 'Epochs: ' + str(epochs) + \
-                                 'Units' + str(units) + \
-                                 'Dropout: ' + str(dropout)
+                                 ' Epochs: ' + str(epochs) + \
+                                 ' Units: ' + str(units) + \
+                                 ' Dropout: ' + str(dropout)
                     scores[parameters] = model_loss
-                    file.write(str(model_loss))
-                    file.write(parameters)
+                    file.write('Loss: ' + str(model_loss))
+                    file.write(' Parameters: ' + parameters + '\n')
+                    file.flush()
                     if model_loss < best_loss:
                         best_loss = model_loss
                         best_model = {
-                            'Model': btc_model,
-                            'Scaler': scaler,
-                            'Parameters': parameters
+                            'Length': leng,
+                            'Epochs': epochs,
+                            'Units': units,
+                            'Dropout': dropout
                         }
 
     sorted_scores = sorted(scores.items(), key=lambda kv: kv[1])
-    print(dict(sorted_scores))
+    file.write('***** SORTED SCORES *****\n')
+    file.write(dict(sorted_scores))
 
-    print('***** BEST MODEL *****')
-    btc_model, scaler, parameters = recover_best_parameters(best_model)
-    print(parameters)
+    file.write('***** BEST MODEL *****\n')
+    file.write(best_model)
+    leng, epochs, units, dropout = recover_best_parameters(best_model)
 
+    X_tr, X_te, y_tr, y_te, scaler = preprocess_data(leng)
+    btc_model = build_model(units, leng, dropout)
+    train_model(btc_model, X_tr, y_tr, epochs)
     btc_pred = make_predictions(btc_model, X_te, y_te, False)
     denormalize_data(btc_pred, y_te, scaler)
 
+    file.flush()
     file.close()
