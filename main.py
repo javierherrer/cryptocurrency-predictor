@@ -178,10 +178,10 @@ if __name__ == "__main__":
 
     sorted_scores = sorted(scores.items(), key=lambda kv: kv[1])
     file.write('***** SORTED SCORES *****\n')
-    file.write(dict(sorted_scores))
+    file.write(str(dict(sorted_scores)))
 
     file.write('***** BEST MODEL *****\n')
-    file.write(best_model)
+    file.write(str(best_model))
     leng, epochs, units, dropout = recover_best_parameters(best_model)
 
     X_tr, X_te, y_tr, y_te, scaler = preprocess_data(leng)
