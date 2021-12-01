@@ -60,16 +60,16 @@ def split_data(x, y, train_perc):
     return x_train, x_test, y_train, y_test
 
 
-def build_nn(length, dropout_rate):
+def build_nn(length):
     model = tf.keras.Sequential()
 
-    model.add(layers.LSTM(units=32, return_sequences=True,
-                          input_shape=(length, 1), dropout=dropout_rate))
+    model.add(layers.LSTM(units=128, return_sequences=True,
+                          input_shape=(length, 1), dropout=0))
 
-    model.add(layers.LSTM(units=32, return_sequences=True,
-                          dropout=dropout_rate))
+    model.add(layers.LSTM(units=128, return_sequences=True,
+                          dropout=0))
 
-    model.add(layers.LSTM(units=32, dropout=dropout_rate))
+    model.add(layers.LSTM(units=128, dropout=0))
 
     model.add(layers.Dense(units=1))
 
@@ -80,7 +80,7 @@ def build_nn(length, dropout_rate):
 
 def train_model(mod, x_train, y_train):
     mod.compile(optimizer='adam', loss='mean_squared_error')
-    history = mod.fit(x_train, y_train, epochs=30, batch_size=32)
+    history = mod.fit(x_train, y_train, epochs=40, batch_size=32)
 
     loss = history.history['loss']
     epoch_count = range(1, len(loss) + 1)
@@ -113,18 +113,17 @@ def denormalize_data(pred, y_test, sc):
     plt.plot(pred_transformed, color='red', label='Prediction')
     plt.title('BTC Price Prediction')
     plt.legend()
-    plt.show(0)
+    plt.show()
 
 if __name__ == "__main__":
     leng = 90
-    tr_perc = 0.9
-    dropout = 0.2
+    tr_perc = 0.8
 
     btc_history = import_data()
     btc_history, btc_target = preprocess_data(btc_history, leng)
     btc_hist_scaled, btc_target_scaled, scaler = normalize_data(btc_history, btc_target, leng)
     X_tr, X_te, y_tr, y_te = split_data(btc_hist_scaled, btc_target_scaled, tr_perc)
-    btc_model = build_nn(leng, dropout)
+    btc_model = build_nn(leng)
     train_model(btc_model, X_tr, y_tr)
     btc_pred = make_predictions(btc_model, X_te, y_te)
     denormalize_data(btc_pred, y_te, scaler)
